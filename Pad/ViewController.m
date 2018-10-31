@@ -38,13 +38,15 @@
 @property (nonatomic,strong) UIImageAndLabelBtn * autoBtn;
 //关机按钮
 @property (nonatomic,strong) UIImageAndLabelBtn * closeBtn;
-
+//右上角，长按弹出修改ip地址的view
+@property (nonatomic,strong) UIView * longPressView;
 
 // 客户端socket
 @property (strong, nonatomic) GCDAsyncSocket * clientSocket;
-@property (nonatomic,assign) BOOL connected;
 // 计时器
 @property (nonatomic, strong) NSTimer *connectTimer;
+//IP地址
+@property (nonatomic,strong) NSString * ipStr;
 
 @end
 
@@ -57,8 +59,19 @@
     // Do any additional setup after loading the view, typically from a nib.
     [self bindConstraints];
     
+    NSString * IPString = [[NSUserDefaults standardUserDefaults] objectForKey:@"IP"];
+    if (IPString) {
+        
+        self.ipStr = IPString;
+    }
+    else{
+        
+        self.ipStr = @"192.168.1.11";
+        [[NSUserDefaults standardUserDefaults] setObject:self.ipStr forKey:@"IP"];
+        [[NSUserDefaults standardUserDefaults] synchronize];
+    }
+    
     [self setSocket];
-    [self addTimer];
     [self check];
 }
 
@@ -75,7 +88,6 @@
 {
     
     //链接成功
-    self.connected = YES;
     [MBProgressHUD displayHudError:@"主机连接成功"];
 }
 
@@ -86,7 +98,6 @@
     //断开连接
     self.clientSocket.delegate = nil;
     self.clientSocket = nil;
-    self.connected = NO;
     [MBProgressHUD displayHudError:@"断开连接"];
 }
 
@@ -98,45 +109,46 @@
     firstPadding = (CGRectGetWidth(self.view.frame) - 100 * 3) / 4.0;
     secondPadding = (CGRectGetWidth(self.view.frame) - 100 * 3) / 2.0;
     [self.view addSubview:self.bgImageView];
+    [self.bgImageView addSubview:self.longPressView];
     [self.bgImageView addSubview:self.environmentBtn];
-    [self.view addSubview:self.wasteCollectionBtn];
-    [self.view addSubview:self.processingFertilizerBtn];
-    [self.view addSubview:self.landApplicationBtn];
-    [self.view addSubview:self.agriculturalPreferenceBtn];
-    [self.view addSubview:self.salePlatformBtn];
-    [self.view addSubview:self.closeBtn];
-    [self.view addSubview:self.autoBtn];
+    [self.bgImageView addSubview:self.wasteCollectionBtn];
+    [self.bgImageView addSubview:self.processingFertilizerBtn];
+    [self.bgImageView addSubview:self.landApplicationBtn];
+    [self.bgImageView addSubview:self.agriculturalPreferenceBtn];
+    [self.bgImageView addSubview:self.salePlatformBtn];
+    [self.bgImageView addSubview:self.closeBtn];
+    [self.bgImageView addSubview:self.autoBtn];
 }
 
 -(void)buttonClicked:(UIControl *)btn{
  
-    if (self.connected) {
-        
+    if (self.clientSocket.isConnected) {
+    
         NSString * code;
         switch (btn.tag - BUTTONBASETAG) {
             case 0:
-                code = @"0xAA0X010X000XCC";
+                code = @"AA0100CC";
                 break;
             case 1:
-                code = @"0xAA0X020X000XCC";
+                code = @"AA0200CC";
                 break;
             case 2:
-                code = @"0xAA0X030X000XCC";
+                code = @"AA0300CC";
                 break;
             case 3:
-                code = @"0xAA0X040X000XCC";
+                code = @"AA0400CC";
                 break;
             case 4:
-                code = @"0xAA0X050X000XCC";
+                code = @"AA0500CC";
                 break;
             case 5:
-                code = @"0xAA0X060X000XCC";
+                code = @"AA0600CC";
                 break;
             case 6:
-                code = @"0xAA0X070X000XCC";
+                code = @"AA0700CC";
                 break;
             case 7:
-                code = @"0xAA0X080X000XCC";
+                code = @"AA0800CC";
                 break;
             default:
                 break;
@@ -145,7 +157,7 @@
         [self sendMessageForservers:code];
     }
     else{
-        
+
         //未建立socket连接
         [MBProgressHUD displayHudError:@"未建立连接，稍等"];
         [self setSocket];
@@ -159,7 +171,7 @@
     
     NSString *hexString = message; //16进制字符串
     int j=0;
-    Byte bytes[8];//根据自己的要求 设置 位数
+    Byte bytes[4];//根据自己的要求 设置 位数
     
     for(int i=0;i<[hexString length];i++){
         
@@ -194,7 +206,7 @@
         j++;
     }
     
-    NSData *newData = [[NSData alloc] initWithBytes:bytes length:8];//length 根据自己要求设置
+    NSData *newData = [[NSData alloc] initWithBytes:bytes length:4];//length 根据自己要求设置
     // withTimeout -1 : 无穷大,一直等
     // tag : 消息标记
     [self.clientSocket writeData:newData withTimeout:- 1 tag:0];
@@ -204,30 +216,20 @@
 //设置socket
 -(void)setSocket{
     
-    //创建socket并指定代理对象为self,代理队列必须为主队列.
-    self.clientSocket = [[GCDAsyncSocket alloc] initWithDelegate:self delegateQueue:dispatch_get_main_queue()];
+    if (!self.clientSocket) {
+        
+        //创建socket并指定代理对象为self,代理队列必须为主队列.
+        self.clientSocket = [[GCDAsyncSocket alloc] initWithDelegate:self delegateQueue:dispatch_get_main_queue()];
+    }
+    
+    if ([self.clientSocket isConnected]) {
+        
+        [self.clientSocket disconnect];
+    }
+    
     //连接指定主机的对应端口.
     NSError *error = nil;
-    self.connected = NO;
-    [self.clientSocket connectToHost:@"192.168.4.1" onPort:@"333".integerValue viaInterface:nil withTimeout:-1 error:&error];
-}
-
-// 添加定时器
-- (void)addTimer
-{
-    // 长连接定时器
-    self.connectTimer = [NSTimer scheduledTimerWithTimeInterval:5.0 target:self selector:@selector(longConnectToSocket) userInfo:nil repeats:YES];
-    // 把定时器添加到当前运行循环,并且调为通用模式
-    [[NSRunLoop currentRunLoop] addTimer:self.connectTimer forMode:NSRunLoopCommonModes];
-}
-
-// 心跳连接
-- (void)longConnectToSocket
-{
-    // 发送固定格式的数据,指令@"longConnect"
-    NSString *longConnect = [NSString stringWithFormat:@"longConnect"];
-    NSData  *data = [longConnect dataUsingEncoding:NSUTF8StringEncoding];
-    [self.clientSocket writeData:data withTimeout:- 1 tag:0];
+    [self.clientSocket connectToHost:self.ipStr onPort:@"333".integerValue viaInterface:nil withTimeout:-1 error:&error];
 }
 
 //有效期校验操作，避免被坑
@@ -245,6 +247,41 @@
         //已过期
         [MBProgressHUD showHUDText:@"您好，您的项目已过试用期，如需继续使用，请联系开发者" forView:self.view animated:YES];
     }
+}
+
+//修改IP手势的响应
+-(void)modifyIP{
+    
+    UIAlertController * alertControl = [UIAlertController alertControllerWithTitle:@"请输入IP地址" message:@"" preferredStyle:UIAlertControllerStyleAlert];
+    [alertControl addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+       
+    }];
+    
+    UIAlertAction * cancleAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
+        
+    }];
+    
+    UIAlertAction * sureAction = [UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        
+        UITextField * tf = alertControl.textFields.firstObject;
+        if (tf && [tf isKindOfClass:[UITextField class]]) {
+            
+            NSString * text = tf.text;
+            if (text && [text isKindOfClass:[NSString class]] && text.length > 0) {
+                
+                self.ipStr = text;
+                [self setSocket];
+                [[NSUserDefaults standardUserDefaults] setObject:self.ipStr forKey:@"IP"];
+                [[NSUserDefaults standardUserDefaults] synchronize];
+            }
+        }
+    }];
+    
+    [alertControl addAction:cancleAction];
+    [alertControl addAction:sureAction];
+    
+    
+    [self presentViewController:alertControl animated:YES completion:nil];
 }
 
 #pragma mark  ----  懒加载
@@ -346,6 +383,18 @@
         [_closeBtn addTarget:self action:@selector(buttonClicked:) forControlEvents:UIControlEventTouchUpInside];
     }
     return _closeBtn;
+}
+
+-(UIView *)longPressView{
+    
+    if (!_longPressView) {
+        
+        _longPressView = [[UIView alloc] initWithFrame:CGRectMake([UIScreen mainScreen].bounds.size.width - 100, 0, 100, 100)];
+        _longPressView.alpha = 0.1;
+        UILongPressGestureRecognizer * longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(modifyIP)];
+        [_longPressView addGestureRecognizer:longPress];
+    }
+    return _longPressView;
 }
 
 @end
